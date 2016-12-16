@@ -25,7 +25,7 @@ def handle_addDev():
         data = request.get_json(force=True)
         client = Client(import_url, username=IPCONTROL_LOGIN, password=IPCONTROL_PASSWORD)
         device = client.factory.create('WSDevice')
-        device.addressType = 'Reserved'
+        device.addressType = 'Static'
         device.hostname = data['SCALR_EVENT_SERVER_HOSTNAME']
         device.ipAddress = data['SCALR_EVENT_INTERNAL_IP']
         """device = {
