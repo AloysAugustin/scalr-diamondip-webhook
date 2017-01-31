@@ -6,17 +6,20 @@ from suds.client import Client
 import json
 import binascii
 import dateutil.parser
+import hmac
+import traceback
 from hashlib import sha1
-from datetime import tzinfo, timedelta, datetime
+from datetime import datetime
 
 app = Flask(__name__)
 
 IPCONTROL_LOGIN = 'user'
 IPCONTROL_PASSWORD = 'password'
 SCALR_SIGNING_KEY = 'scalr signing key'
+DIAMONDIP_SERVER = 'http://0.0.0.0/'
 
-import_url = 'http://server-diamondip/inc-ws/services/Imports?wsdl'
-delete_url = 'http://server-diamondip/inc-ws/services/Deletes?wsdl'
+import_url = DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
+delete_url = DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
 
 @app.route("/", methods=['POST'])
 def webhook_listener():
@@ -33,9 +36,8 @@ def webhook_listener():
         elif data['eventName'] in ['HostDown', 'BeforeHostTerminate']:
             return delDev(data['data'])
     except Exception as e:
-        print(e)
         traceback.print_exc()
-        abort(401)
+        abort(500)
 
 def addDev(data):
     client = Client(import_url, username=IPCONTROL_LOGIN, password=IPCONTROL_PASSWORD)
