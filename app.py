@@ -44,13 +44,13 @@ def addDev(data):
     device = client.factory.create('WSDevice')
     device.addressType = 'Static'
     device.hostname = getHostname(data)
-    device.ipAddress = data['SCALR_EVENT_INTERNAL_IP']
+    device.ipAddress = data['SCALR_EVENT_EXTERNAL_IP']
     return client.service.importDevice(device)
 
 def delDev(data):
     client = Client(delete_url, username=IPCONTROL_LOGIN, password=IPCONTROL_PASSWORD)
     device = client.factory.create('WSDevice')
-    device.ipAddress = data['SCALR_EVENT_INTERNAL_IP']
+    device.ipAddress = data['SCALR_EVENT_EXTERNAL_IP']
     return client.service.deleteDevice(device)
 
 def validateRequest(request):
