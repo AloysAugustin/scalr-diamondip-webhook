@@ -14,7 +14,7 @@ from datetime import datetime
 
 config_file = './config.json'
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
 # will be overridden if present in config_file
