@@ -42,7 +42,7 @@ def webhook_listener():
             return addDev(data['data'])
         elif data['eventName'] in ['HostDown', 'BeforeHostTerminate']:
             return delDev(data['data'])
-    except WebFault as e:
+    except suds.WebFault as e:
         logging.exception('IPAM returned error')
         abort(503)
     except Exception as e:
@@ -92,7 +92,7 @@ def addDev(data):
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     client.service.importDevice(device)
     # pushing DNS config
-    
+
     return 'Ok'
 
 def delDev(data):
