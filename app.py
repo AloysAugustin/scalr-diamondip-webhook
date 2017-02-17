@@ -126,8 +126,10 @@ def loadConfig(filename):
     with open(config_file) as f:
         options = json.loads(f.read())
         for key in options:
-            if key in globals():
+            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY']:
                 globals()[key] = options[key]
+            elif key in ['SCALR_SIGNING_KEY']:
+                globals()[key] = options[key].encode('ascii')
 
 loadConfig(config_file)
 
