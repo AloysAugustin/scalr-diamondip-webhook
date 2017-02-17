@@ -77,11 +77,11 @@ def addDev(data):
     device.domainName = getDomainName(data)
     device.ipAddress = get_ip(data)
     udf = {
-        'Location': 'DATACENTER',
-        'Organization Unit': 'ACCOUNT_NAME',
-        'Support Group': 'SUPPORT_TEAM',
-        'AppCatId': 'SCALR_PROJECT_NAME',
-        'Work Order': 'SCALR_PROJECT_NAME'
+        'location': 'DATACENTER',
+        'OSOrgUnit': 'ACCOUNT_NAME',
+        'SupportContactOS': 'SUPPORT_TEAM',
+        'appcatid': 'SCALR_PROJECT_NAME',
+        'WOREF': 'SCALR_PROJECT_NAME'
     }
     for name, gv in udf.items():
         if not gv in data:
