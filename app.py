@@ -24,10 +24,10 @@ SCALR_SIGNING_KEY = ''
 DIAMONDIP_SERVER = ''
 PROXY = {}
 
-import_url = DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
-delete_url = DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
-import_location = DIAMONDIP_SERVER + 'inc-ws/services/Imports'
-delete_location = DIAMONDIP_SERVER + 'inc-ws/services/Deletes'
+import_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
+delete_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
+import_location = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports'
+delete_location = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Deletes'
 
 @app.route("/", methods=['POST'])
 def webhook_listener():
@@ -64,10 +64,10 @@ def getDomainName(data):
     return data['DNS_DOMAIN']
 
 def addDev(data):
-    client = Client(import_url,
+    client = Client(import_url(),
                     username=IPCONTROL_LOGIN,
                     password=IPCONTROL_PASSWORD,
-                    location=import_location,
+                    location=import_location(),
                     timeout=10,
                     proxy=PROXY)
     device = client.factory.create('ns2:WSDevice')
@@ -97,10 +97,10 @@ def addDev(data):
     return 'Ok'
 
 def delDev(data):
-    client = Client(delete_url, 
+    client = Client(delete_url(),
                     username=IPCONTROL_LOGIN,
                     password=IPCONTROL_PASSWORD,
-                    location=delete_location,
+                    location=delete_location(),
                     timeout=10,
                     proxy=PROXY)
     device = client.factory.create('ns2:WSDevice')
@@ -127,8 +127,10 @@ def loadConfig(filename):
         options = json.loads(f.read())
         for key in options:
             if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY']:
+                logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key]
             elif key in ['SCALR_SIGNING_KEY']:
+                logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key].encode('ascii')
 
 loadConfig(config_file)
