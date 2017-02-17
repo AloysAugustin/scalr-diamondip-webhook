@@ -4,22 +4,29 @@ from flask import abort
 import pytz
 from suds.client import Client
 import json
+import logging
 import binascii
 import dateutil.parser
 import hmac
-import traceback
 from hashlib import sha1
 from datetime import datetime
 
+config_file = './config.json'
+
+logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 
-IPCONTROL_LOGIN = 'user'
-IPCONTROL_PASSWORD = 'password'
-SCALR_SIGNING_KEY = 'scalr signing key'
-DIAMONDIP_SERVER = 'http://0.0.0.0/'
+# will be overridden if present in config_file
+IPCONTROL_LOGIN = ''
+IPCONTROL_PASSWORD = ''
+SCALR_SIGNING_KEY = ''
+DIAMONDIP_SERVER = ''
+PROXY = {}
 
 import_url = DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
 delete_url = DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
+import_location = DIAMONDIP_SERVER + 'inc-ws/services/Imports'
+delete_location = DIAMONDIP_SERVER + 'inc-ws/services/Deletes'
 
 @app.route("/", methods=['POST'])
 def webhook_listener():
@@ -35,23 +42,71 @@ def webhook_listener():
             return addDev(data['data'])
         elif data['eventName'] in ['HostDown', 'BeforeHostTerminate']:
             return delDev(data['data'])
+    except WebFault as e:
+        logging.exception('IPAM returned error')
+        abort(503)
     except Exception as e:
-        traceback.print_exc()
+        logging.exception('Error processing this request')
         abort(500)
 
+
+def getHostname(data):
+    return data['SCALR_EVENT_SERVER_HOSTNAME']
+
+def get_ip(data):
+    if data['SCALR_EVENT_INTERNAL_IP']:
+        return data['SCALR_EVENT_INTERNAL_IP']
+    else:
+        return data['SCALR_EVENT_EXTERNAL_IP']
+
+def getDomainName(data):
+    return data['DNS_DOMAIN']
+
 def addDev(data):
-    client = Client(import_url, username=IPCONTROL_LOGIN, password=IPCONTROL_PASSWORD)
-    device = client.factory.create('WSDevice')
+    client = Client(import_url,
+                    username=IPCONTROL_LOGIN,
+                    password=IPCONTROL_PASSWORD,
+                    location=import_location,
+                    timeout=10,
+                    proxy=PROXY)
+    device = client.factory.create('ns2:WSDevice')
     device.addressType = 'Static'
+    device.deviceType = 'Static Server'
     device.hostname = getHostname(data)
-    device.ipAddress = data['SCALR_EVENT_EXTERNAL_IP']
-    return client.service.importDevice(device)
+    device.domainName = getDomainName(data)
+    device.ipAddress = get_ip(data)
+    udf = {
+        'Location': 'DATACENTER',
+        'Organization Unit': 'ACCOUNT_NAME',
+        'Support Group': 'SUPPORT_TEAM',
+        'AppCatId': 'SCALR_PROJECT_NAME',
+        'Work Order': 'SCALR_PROJECT_NAME'
+    }
+    for name, gv in udf.items():
+        if not gv in data:
+            raise Exception('Global Variable {} not found, cannot set user defined field in IPAM')
+        device.userDefinedFields[name] = data[gv]
+    device.userDefinedFields['Floor'] = 'not applicable'
+
+    logging.info(json.dumps(data, indent=2))
+    logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
+    client.service.importDevice(device)
+    # pushing DNS config
+    
+    return 'Ok'
 
 def delDev(data):
-    client = Client(delete_url, username=IPCONTROL_LOGIN, password=IPCONTROL_PASSWORD)
-    device = client.factory.create('WSDevice')
-    device.ipAddress = data['SCALR_EVENT_EXTERNAL_IP']
-    return client.service.deleteDevice(device)
+    client = Client(delete_url, 
+                    username=IPCONTROL_LOGIN,
+                    password=IPCONTROL_PASSWORD,
+                    location=delete_location,
+                    timeout=10,
+                    proxy=PROXY)
+    device = client.factory.create('ns2:WSDevice')
+    device.ipAddress = get_ip(data)
+    client.service.deleteDevice(device)
+    return 'Deletion ok'
+
 
 def validateRequest(request):
     if not 'X-Signature' in request.headers or not 'Date' in request.headers:
@@ -66,9 +121,15 @@ def validateRequest(request):
     delta = abs((now - date).total_seconds())
     return delta < 300
 
-def getHostname(data):
-    hostname = data['SCALR_EVENT_SERVER_HOSTNAME']
-    return hostname
+def loadConfig(filename):
+    with open(config_file) as f:
+        options = json.loads(f.read())
+        for key in options:
+            if key in globals():
+                globals()[key] = options[key]
+
+loadConfig(config_file)
 
 if __name__=='__main__':
     app.run(debug=False, host='0.0.0.0')
+
