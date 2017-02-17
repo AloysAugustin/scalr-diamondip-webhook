@@ -2,6 +2,7 @@ from flask import Flask
 from flask import request
 from flask import abort
 import pytz
+import suds
 from suds.client import Client
 import json
 import logging
