@@ -5,6 +5,7 @@ import pytz
 import suds
 from suds.client import Client
 import json
+import dns.resolver
 import logging
 import binascii
 import dateutil.parser
@@ -25,9 +26,11 @@ DIAMONDIP_SERVER = ''
 PROXY = {}
 
 import_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
-delete_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
 import_location = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports'
+delete_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Deletes?wsdl'
 delete_location = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Deletes'
+tasks_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/TaskInvocation?wsdl'
+tasks_location = lambda: DIAMONDIP_SERVER + 'inc-ws/services/TaskInvocation'
 
 @app.route("/", methods=['POST'])
 def webhook_listener():
@@ -73,6 +76,8 @@ def addDev(data):
     device = client.factory.create('ns2:WSDevice')
     device.addressType = 'Static'
     device.deviceType = 'Static Server'
+    # Create resource records
+    device.resourceRecordFlag = True
     device.hostname = getHostname(data)
     device.domainName = getDomainName(data)
     device.ipAddress = get_ip(data)
@@ -86,14 +91,24 @@ def addDev(data):
     for name, gv in udf.items():
         if not gv in data:
             raise Exception('Global Variable {} not found, cannot set user defined field in IPAM')
-        device.userDefinedFields[name] = data[gv]
-    device.userDefinedFields['Floor'] = 'not applicable'
+        device.userDefinedFields[name] = name + '=' + data[gv]
+    device.userDefinedFields['Floor'] = 'floor=not applicable'
 
     logging.info(json.dumps(data, indent=2))
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     client.service.importDevice(device)
     # pushing DNS config
-
+    soa = dns.resolver.query(device.domainName, 'SOA')
+    # select first response in SOA query
+    server = soa.rrset.items[0].mname.to_text()[:-1]
+    task_client = Client(tasks_url(),
+                         username=IPCONTROL_LOGIN,
+                         password=IPCONTROL_PASSWORD,
+                         location=tasks_location(),
+                         timeout=10,
+                         proxy=PROXY)
+    # Using changed zones temporarily since our user doesn't have access to 
+    task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
     return 'Ok'
 
 def delDev(data):

@@ -2,7 +2,7 @@
     "IPCONTROL_LOGIN": "login",
     "IPCONTROL_PASSWORD": "password",
     "SCALR_SIGNING_KEY": "",
-    "DIAMONDIP_SERVER": "",
+    "DIAMONDIP_SERVER": "https://diamondip.server:8443/",
     "PROXY": {
         "http": "",
         "https": ""
