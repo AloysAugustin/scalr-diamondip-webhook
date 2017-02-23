@@ -66,6 +66,20 @@ def get_ip(data):
 def getDomainName(data):
     return data['DNS_DOMAIN']
 
+def pushChanges(domainName):
+    # pushing DNS config
+    soa = dns.resolver.query(domainName, 'SOA')
+    # select first response in SOA query
+    server = soa.rrset.items[0].mname.to_text()[:-1]
+    task_client = Client(tasks_url(),
+                         username=IPCONTROL_LOGIN,
+                         password=IPCONTROL_PASSWORD,
+                         location=tasks_location(),
+                         timeout=10,
+                         proxy=PROXY)
+    # Using changed zones temporarily since our user doesn't have access to dnsConfigurationSelectedZones
+    task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
+
 def addDev(data):
     client = Client(import_url(),
                     username=IPCONTROL_LOGIN,
@@ -86,7 +100,7 @@ def addDev(data):
         'OSOrgUnit': 'ACCOUNT_NAME',
         'SupportContactOS': 'SUPPORT_TEAM',
         'appcatid': 'SCALR_PROJECT_NAME',
-        'WOREF': 'SCALR_PROJECT_NAME'
+        'WOREF': 'CRQ_NIMBER'
     }
     for name, gv in udf.items():
         if not gv in data:
@@ -97,18 +111,7 @@ def addDev(data):
     logging.info(json.dumps(data, indent=2))
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     client.service.importDevice(device)
-    # pushing DNS config
-    soa = dns.resolver.query(device.domainName, 'SOA')
-    # select first response in SOA query
-    server = soa.rrset.items[0].mname.to_text()[:-1]
-    task_client = Client(tasks_url(),
-                         username=IPCONTROL_LOGIN,
-                         password=IPCONTROL_PASSWORD,
-                         location=tasks_location(),
-                         timeout=10,
-                         proxy=PROXY)
-    # Using changed zones temporarily since our user doesn't have access to 
-    task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
+    pushChanges(device.domainName)
     return 'Ok'
 
 def delDev(data):
@@ -121,6 +124,7 @@ def delDev(data):
     device = client.factory.create('ns2:WSDevice')
     device.ipAddress = get_ip(data)
     client.service.deleteDevice(device)
+    pushChanges(getDomainName(data))
     return 'Deletion ok'
 
 
