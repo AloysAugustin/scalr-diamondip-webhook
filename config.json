@@ -6,5 +6,8 @@
     "PROXY": {
         "http": "",
         "https": ""
-    }
+    },
+    "DYNAMIC_ZONES": [
+        "example.com."
+    ]
 }

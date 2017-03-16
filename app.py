@@ -12,6 +12,7 @@ import dateutil.parser
 import hmac
 from hashlib import sha1
 from datetime import datetime
+import re
 
 config_file = './config.json'
 
@@ -23,6 +24,7 @@ IPCONTROL_LOGIN = ''
 IPCONTROL_PASSWORD = ''
 SCALR_SIGNING_KEY = ''
 DIAMONDIP_SERVER = ''
+DYNAMIC_ZONES = []
 PROXY = {}
 
 import_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
@@ -66,19 +68,90 @@ def get_ip(data):
 def getDomainName(data):
     return data['DNS_DOMAIN']
 
-def pushChanges(domainName):
+def is_valid_hostname(hostname):
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        hostname = hostname[:-1] # strip exactly one dot from the right, if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+def add_additional_names(data, imports):
+    # Returns a list of domain nams that were impacted, to be updated
+    names = data.get('ADDITIONAL_NAMES')
+    if not names:
+        return set()
+    changedDomainNames = []
+    real_hostname = getHostname(data) + '.' + getDomainName(data) + '.'
+    for name in names.split():
+        if not name:
+            continue
+        if not is_valid_hostname(name):
+            logging.error('Invalid hostname found: %s, not registered', name)
+            continue
+        components = name.split('.')
+        hostname = components[0]
+        domain_name = '.'.join(components[1:])
+        rr = imports.factory.create('ns2:WSDeviceResourceRec')
+        rr.domain = domain_name
+        rr.hostname = hostname
+        rr.resourceRecordType = 'CNAME'
+        rr.data = real_hostname
+        rr.comment = 'Created automatically by Scalr'
+        rr.owner = '' ### ???
+        logging.debug('Adding resource record: %s', rr)
+        imports.service.importDeviceResourceRecord(rr)
+        changedDomainNames.append(domain_name)
+    return set(changedDomainNames)
+
+def remove_additional_domains(data, deletes):
+    # Returns a list of domain nams that were impacted, to be updated
+    names = data.get('ADDITIONAL_NAMES')
+    if not names:
+        return set()
+    changedDomainNames = []
+    real_hostname = getHostname(data) + '.' + getDomainName(data) + '.'
+    for name in names.split():
+        if not name:
+            continue
+        if not is_valid_hostname(name):
+            logging.error('Invalid hostname found: %s, not removed', name)
+            continue
+        components = name.split('.')
+        hostname = components[0]
+        domain_name = '.'.join(components[1:])
+        rr = imports.factory.create('ns2:WSDeviceResourceRec')
+        rr.domain = domain_name
+        rr.hostname = hostname
+        rr.resourceRecordType = 'CNAME'
+        rr.data = real_hostname
+        rr.owner = '' ### ???
+        logging.debug('Deleting resource record: %s', rr)
+        deletes.service.deleteDeviceResourceRecord(rr)
+        changedDomainNames.append(domain_name)
+    return set(changedDomainNames)
+
+def get_authority(domainName):
     # pushing DNS config
     soa = dns.resolver.query(domainName, 'SOA')
     # select first response in SOA query
-    server = soa.rrset.items[0].mname.to_text()[:-1]
+    return soa.rrset.items[0].mname.to_text()[:-1]
+
+def pushChanges(domainName):
+    server = get_authority(domainName)
     task_client = Client(tasks_url(),
                          username=IPCONTROL_LOGIN,
                          password=IPCONTROL_PASSWORD,
                          location=tasks_location(),
                          timeout=10,
                          proxy=PROXY)
-    # Using changed zones temporarily since our user doesn't have access to dnsConfigurationSelectedZones
-    task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
+    if domainName in DYNAMIC_ZONES or domainName + '.' in DYNAMIC_ZONES:
+        # Dynamic zone
+        task_client.service.dnsDDNSChangedRRs(name=server)
+    else:
+        # Static zone
+        # Using changed zones temporarily since our user doesn't have access to dnsConfigurationSelectedZones
+        task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
 
 def addDev(data):
     client = Client(import_url(),
@@ -104,14 +177,18 @@ def addDev(data):
     }
     for name, gv in udf.items():
         if not gv in data:
-            raise Exception('Global Variable {} not found, cannot set user defined field in IPAM')
+            raise Exception('Global Variable {} not found, cannot set user defined field in IPAM'.format(gv))
         device.userDefinedFields[name] = name + '=' + data[gv]
     device.userDefinedFields['Floor'] = 'floor=not applicable'
 
-    logging.info(json.dumps(data, indent=2))
+    logging.debug(json.dumps(data, indent=2))
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     client.service.importDevice(device)
-    pushChanges(device.domainName)
+    if 'OS_ID' in data and data['OS_ID'] == 'l':
+        changed_domains = add_additional_names(data, client)
+        changed_domains.add(device.domainName)
+        for domain in changed_domains:
+            pushChanges(domain)
     return 'Ok'
 
 def delDev(data):
@@ -124,7 +201,11 @@ def delDev(data):
     device = client.factory.create('ns2:WSDevice')
     device.ipAddress = get_ip(data)
     client.service.deleteDevice(device)
-    pushChanges(getDomainName(data))
+    if 'OS_ID' in data and data['OS_ID'] == 'l':
+        changed_domains = remove_additional_names(data, client)
+        changed_domains.add(getDomainName(data))
+        for domain in changed_domains:
+            pushChanges(domain)
     return 'Deletion ok'
 
 
@@ -145,7 +226,7 @@ def loadConfig(filename):
     with open(config_file) as f:
         options = json.loads(f.read())
         for key in options:
-            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY']:
+            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY', 'DYNAMIC_ZONES']:
                 logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key]
             elif key in ['SCALR_SIGNING_KEY']:
