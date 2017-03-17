@@ -76,58 +76,25 @@ def is_valid_hostname(hostname):
     allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(x) for x in hostname.split("."))
 
-def add_additional_names(data, imports):
+def add_additional_names(device, data, imports):
     # Returns a list of domain nams that were impacted, to be updated
     names = data.get('ADDITIONAL_NAMES')
     if not names:
         return set()
     changedDomainNames = []
-    real_hostname = getHostname(data) + '.' + getDomainName(data) + '.'
+
     for name in names.split():
         if not name:
             continue
         if not is_valid_hostname(name):
             logging.error('Invalid hostname found: %s, not registered', name)
             continue
+        device.aliases.append(name)
         components = name.split('.')
         hostname = components[0]
         domain_name = '.'.join(components[1:])
-        rr = imports.factory.create('ns2:WSDeviceResourceRec')
-        rr.domain = domain_name
-        rr.hostname = hostname
-        rr.resourceRecordType = 'CNAME'
-        rr.data = real_hostname
-        rr.comment = 'Created automatically by Scalr'
-        rr.owner = '' ### ???
-        logging.debug('Adding resource record: %s', rr)
-        imports.service.importDeviceResourceRecord(rr)
-        changedDomainNames.append(domain_name)
-    return set(changedDomainNames)
-
-def remove_additional_domains(data, deletes):
-    # Returns a list of domain nams that were impacted, to be updated
-    names = data.get('ADDITIONAL_NAMES')
-    if not names:
-        return set()
-    changedDomainNames = []
-    real_hostname = getHostname(data) + '.' + getDomainName(data) + '.'
-    for name in names.split():
-        if not name:
-            continue
-        if not is_valid_hostname(name):
-            logging.error('Invalid hostname found: %s, not removed', name)
-            continue
-        components = name.split('.')
-        hostname = components[0]
-        domain_name = '.'.join(components[1:])
-        rr = imports.factory.create('ns2:WSDeviceResourceRec')
-        rr.domain = domain_name
-        rr.hostname = hostname
-        rr.resourceRecordType = 'CNAME'
-        rr.data = real_hostname
-        rr.owner = '' ### ???
-        logging.debug('Deleting resource record: %s', rr)
-        deletes.service.deleteDeviceResourceRecord(rr)
+        if domain_name[-1] != '.':
+            domain_name = domain_name + '.'
         changedDomainNames.append(domain_name)
     return set(changedDomainNames)
 
@@ -185,7 +152,10 @@ def addDev(data):
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     client.service.importDevice(device)
     if 'OS_ID' in data and data['OS_ID'] == 'l':
-        changed_domains = add_additional_names(data, client)
+        device.aliases = []
+        changed_domains = add_additional_names(device, data, client)
+        if device.domainName[-1] != '.':
+            device.domainName = device.domainName + '.'
         changed_domains.add(device.domainName)
         for domain in changed_domains:
             pushChanges(domain)
@@ -202,10 +172,7 @@ def delDev(data):
     device.ipAddress = get_ip(data)
     client.service.deleteDevice(device)
     if 'OS_ID' in data and data['OS_ID'] == 'l':
-        changed_domains = remove_additional_names(data, client)
-        changed_domains.add(getDomainName(data))
-        for domain in changed_domains:
-            pushChanges(domain)
+        pushChanges(getDomainName(data))
     return 'Deletion ok'
 
 
