@@ -143,14 +143,15 @@ def addDev(data):
             raise Exception('Global Variable {} not found, cannot set user defined field in IPAM'.format(gv))
         device.userDefinedFields.append(name + '=' + data[gv])
 
+        device.aliases = []
+    changed_domains = add_additional_names(device, data, client)
+
     logging.debug(json.dumps(data, indent=2))
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
     logging.info('Domain name: %s', device.domainName)
     logging.info('User defined fields: {}'.format(device.userDefinedFields))
     client.service.importDevice(device)
     if 'OS_ID' in data and data['OS_ID'] == 'l':
-        device.aliases = []
-        changed_domains = add_additional_names(device, data, client)
         if device.domainName[-1] != '.':
             device.domainName = device.domainName + '.'
         changed_domains.add(device.domainName)
