@@ -177,7 +177,13 @@ def delDev(data):
     device.ipAddress = get_ip(data)
     client.service.deleteDevice(device)
     if 'OS_ID' in data and data['OS_ID'] == 'l':
-        pushChanges(getDomainName(data))
+        task_client = Client(tasks_url(),
+                             username=IPCONTROL_LOGIN,
+                             password=IPCONTROL_PASSWORD,
+                             location=tasks_location(),
+                             timeout=10,
+                             proxy=PROXY)
+        pushChanges(getDomainName(data), task_client)
     return 'Deletion ok'
 
 
