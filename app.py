@@ -24,7 +24,7 @@ IPCONTROL_LOGIN = ''
 IPCONTROL_PASSWORD = ''
 SCALR_SIGNING_KEY = ''
 DIAMONDIP_SERVER = ''
-DYNAMIC_ZONES = []
+STATIC_ZONES = []
 PROXY = {}
 
 import_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
@@ -51,9 +51,6 @@ def webhook_listener():
     except suds.WebFault as e:
         logging.exception('IPAM returned error')
         abort(503)
-    except Exception as e:
-        logging.exception('Error processing this request')
-        abort(500)
 
 
 def getHostname(data):
@@ -89,6 +86,7 @@ def add_additional_names(device, data, imports):
         if not is_valid_hostname(name):
             logging.error('Invalid hostname found: %s, not registered', name)
             continue
+        logging.info("Adding alias: %s", name)
         device.aliases.append(name)
         components = name.split('.')
         hostname = components[0]
@@ -104,21 +102,18 @@ def get_authority(domainName):
     # select first response in SOA query
     return soa.rrset.items[0].mname.to_text()[:-1]
 
-def pushChanges(domainName):
+def pushChanges(domainName, tasks_client):
     server = get_authority(domainName)
-    task_client = Client(tasks_url(),
-                         username=IPCONTROL_LOGIN,
-                         password=IPCONTROL_PASSWORD,
-                         location=tasks_location(),
-                         timeout=10,
-                         proxy=PROXY)
-    if domainName in DYNAMIC_ZONES or domainName + '.' in DYNAMIC_ZONES:
-        # Dynamic zone
-        task_client.service.dnsDDNSChangedRRs(name=server)
-    else:
+    if domainName in STATIC_ZONES or domainName + '.' in STATIC_ZONES:
         # Static zone
         # Using changed zones temporarily since our user doesn't have access to dnsConfigurationSelectedZones
+        logging.info('Updating static zone: %s, server: %s', domainName, server)
         task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
+    else:
+        # Dynamic zone
+        logging.info('Updating dynamic zone: %s, server: %s', domainName, server)
+        task_client.service.dnsDDNSChangedRRs(name=server)
+    
 
 def addDev(data):
     client = Client(import_url(),
@@ -140,16 +135,18 @@ def addDev(data):
         'OSOrgUnit': 'ACCOUNT_NAME',
         'SupportContactOS': 'SUPPORT_TEAM',
         'appcatid': 'SCALR_PROJECT_NAME',
-        'WOREF': 'CRQ_NIMBER'
+        'WOREF': 'CRQ_NUMBER'
     }
+    device.userDefinedFields = ['floor=not applicable']
     for name, gv in udf.items():
         if not gv in data:
             raise Exception('Global Variable {} not found, cannot set user defined field in IPAM'.format(gv))
-        device.userDefinedFields[name] = name + '=' + data[gv]
-    device.userDefinedFields['Floor'] = 'floor=not applicable'
+        device.userDefinedFields.append(name + '=' + data[gv])
 
     logging.debug(json.dumps(data, indent=2))
     logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
+    logging.info('Domain name: %s', device.domainName)
+    logging.info('User defined fields: {}'.format(device.userDefinedFields))
     client.service.importDevice(device)
     if 'OS_ID' in data and data['OS_ID'] == 'l':
         device.aliases = []
@@ -157,8 +154,15 @@ def addDev(data):
         if device.domainName[-1] != '.':
             device.domainName = device.domainName + '.'
         changed_domains.add(device.domainName)
+        logging.info("Zones to update: {}".format(changed_domains))
+        task_client = Client(tasks_url(),
+                             username=IPCONTROL_LOGIN,
+                             password=IPCONTROL_PASSWORD,
+                             location=tasks_location(),
+                             timeout=10,
+                             proxy=PROXY)
         for domain in changed_domains:
-            pushChanges(domain)
+            pushChanges(domain, task_client)
     return 'Ok'
 
 def delDev(data):
@@ -193,7 +197,7 @@ def loadConfig(filename):
     with open(config_file) as f:
         options = json.loads(f.read())
         for key in options:
-            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY', 'DYNAMIC_ZONES']:
+            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY', 'STATIC_ZONES']:
                 logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key]
             elif key in ['SCALR_SIGNING_KEY']:

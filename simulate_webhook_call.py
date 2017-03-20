@@ -8,14 +8,13 @@ from datetime import datetime
 
 import requests
 
-signing_key = 'scalr signing key'
+signing_key = ''
 
 payload = """{
     "eventName": "HostUp",
     "eventId": "a4eda072-7deb-40e4-b32c-fd0edecea23f",
     "userData": "",
     "data": {
-        "DIAMONDIP_SEGMENT_ID": "None",
         "SCALR_EVENT_FARM_ROLE_ID": "67460",
         "SCALR_EVENT_CLOUD_LOCATION_ZONE": "us-east-1d",
         "SCALR_EVENT_NAME": "HostUp",
@@ -47,7 +46,7 @@ payload = """{
         "SCALR_EVENT_AVAIL_ZONE": "us-east-1d",
         "SCALR_FARM_NAME": "Tutorial :: Continuous Integration",
         "SCALR_FARM_ROLE_ALIAS": "app",
-        "SCALR_EVENT_SERVER_HOSTNAME": "ec2-54-81-159-120.compute-1.amazonaws.com",
+        "SCALR_EVENT_SERVER_HOSTNAME": "helloserver",
         "SCALR_EVENT_FARM_NAME": "Tutorial :: Continuous Integration",
         "SCALR_REGION": "us-east-1",
         "SCALR_EVENT_BEHAVIORS": "base,chef",
@@ -64,7 +63,15 @@ payload = """{
         "SCALR_ISDBMASTER": "",
         "SCALR_EVENT_ISDBMASTER": "",
         "SCALR_INSTANCE_ID": "i-072ccf26",
-        "SCALR_EVENT_INSTANCE_ID": "i-072ccf26"
+        "SCALR_EVENT_INSTANCE_ID": "i-072ccf26",
+        "DNS_DOMAIN": "google.com",
+        "SCALR_PROJECT_NAME": "azer",
+        "CRQ_NUMBER": "1022",
+        "SUPPORT_TEAM": "aa",
+        "ACCOUNT_NAME": "blah",
+        "DATACENTER": "a",
+        "OS_ID": "l",
+        "ADDITIONAL_NAMES": "app.google.fr"
     },
     "timestamp": "Thu 20 Mar 2014 14:28:05 UTC"
 }"""

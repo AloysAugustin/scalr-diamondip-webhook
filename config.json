@@ -7,7 +7,7 @@
         "http": "",
         "https": ""
     },
-    "DYNAMIC_ZONES": [
+    "STATIC_ZONES": [
         "example.com."
     ]
 }
