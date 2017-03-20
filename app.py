@@ -102,7 +102,7 @@ def get_authority(domainName):
     # select first response in SOA query
     return soa.rrset.items[0].mname.to_text()[:-1]
 
-def pushChanges(domainName, tasks_client):
+def pushChanges(domainName, task_client):
     server = get_authority(domainName)
     if domainName in STATIC_ZONES or domainName + '.' in STATIC_ZONES:
         # Static zone
