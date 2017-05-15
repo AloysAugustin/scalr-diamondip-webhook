@@ -14,7 +14,7 @@ from hashlib import sha1
 from datetime import datetime
 import re
 
-config_file = './config.json'
+config_file = './config_prod.json'
 
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
@@ -75,7 +75,7 @@ def is_valid_hostname(hostname):
 
 def add_additional_names(device, data, imports):
     # Returns a list of domain nams that were impacted, to be updated
-    names = data.get('ADDITIONAL_NAMES')
+    names = data.get('LB_ALIAS_NAME')
     if not names:
         return set()
     changedDomainNames = []
@@ -103,6 +103,8 @@ def get_authority(domainName):
     return soa.rrset.items[0].mname.to_text()[:-1]
 
 def pushChanges(domainName, task_client):
+    if not domainName:
+        return
     server = get_authority(domainName)
     if domainName in STATIC_ZONES or domainName + '.' in STATIC_ZONES:
         # Static zone
@@ -127,8 +129,13 @@ def addDev(data):
     device.deviceType = 'Static Server'
     # Create resource records
     device.resourceRecordFlag = True
-    device.hostname = getHostname(data)
-    device.domainName = getDomainName(data)
+    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
+        device.hostname = getHostname(data)
+        device.domainName = getDomainName(data)
+    else:
+        # Don't register windows in DNS
+        device.hostname = ''
+        device.domainName = ''
     device.ipAddress = get_ip(data)
     udf = {
         'location': 'DATACENTER',
@@ -147,23 +154,23 @@ def addDev(data):
     changed_domains = add_additional_names(device, data, client)
 
     logging.debug(json.dumps(data, indent=2))
-    logging.info('Adding: ' + device.hostname + ' ' + device.ipAddress)
+    logging.info('Adding: OS ' + data['OS_ID'] + ', ' + device.hostname + ' ' + device.ipAddress)
     logging.info('Domain name: %s', device.domainName)
     logging.info('User defined fields: {}'.format(device.userDefinedFields))
     client.service.importDevice(device)
-    if 'OS_ID' in data and data['OS_ID'] == 'l':
-        if device.domainName[-1] != '.':
+    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
+        if device.domainName and device.domainName[-1] != '.':
             device.domainName = device.domainName + '.'
         changed_domains.add(device.domainName)
-        logging.info("Zones to update: {}".format(changed_domains))
-        task_client = Client(tasks_url(),
-                             username=IPCONTROL_LOGIN,
-                             password=IPCONTROL_PASSWORD,
-                             location=tasks_location(),
-                             timeout=10,
-                             proxy=PROXY)
-        for domain in changed_domains:
-            pushChanges(domain, task_client)
+    logging.info("Zones to update: {}".format(changed_domains))
+    task_client = Client(tasks_url(),
+                         username=IPCONTROL_LOGIN,
+                         password=IPCONTROL_PASSWORD,
+                         location=tasks_location(),
+                         timeout=10,
+                         proxy=PROXY)
+    for domain in changed_domains:
+        pushChanges(domain, task_client)
     return 'Ok'
 
 def delDev(data):
@@ -176,7 +183,7 @@ def delDev(data):
     device = client.factory.create('ns2:WSDevice')
     device.ipAddress = get_ip(data)
     client.service.deleteDevice(device)
-    if 'OS_ID' in data and data['OS_ID'] == 'l':
+    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
         task_client = Client(tasks_url(),
                              username=IPCONTROL_LOGIN,
                              password=IPCONTROL_PASSWORD,
