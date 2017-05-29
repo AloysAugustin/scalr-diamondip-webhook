@@ -25,6 +25,7 @@ IPCONTROL_PASSWORD = ''
 SCALR_SIGNING_KEY = ''
 DIAMONDIP_SERVER = ''
 STATIC_ZONES = []
+IGNORED_ZONES = []
 PROXY = {}
 
 import_url = lambda: DIAMONDIP_SERVER + 'inc-ws/services/Imports?wsdl'
@@ -43,6 +44,11 @@ def webhook_listener():
         data = json.loads(request.data)
         if not 'eventName' in data or not 'data' in data:
             abort(404)
+
+        domainName = getDomainName(data['data'])
+        if domainName in IGNORED_ZONES or domainName + '.' in IGNORED_ZONES:
+            logging.info('Request to register host in %s zone ignored', domainName)
+            return 'Ignored zone, skipping'
 
         if data['eventName'] == 'HostUp':
             return addDev(data['data'])
@@ -211,7 +217,7 @@ def loadConfig(filename):
     with open(config_file) as f:
         options = json.loads(f.read())
         for key in options:
-            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY', 'STATIC_ZONES']:
+            if key in ['IPCONTROL_LOGIN', 'IPCONTROL_PASSWORD', 'DIAMONDIP_SERVER', 'PROXY', 'STATIC_ZONES', 'IGNORED_ZONES']:
                 logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key]
             elif key in ['SCALR_SIGNING_KEY']:

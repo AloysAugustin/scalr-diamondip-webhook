@@ -9,5 +9,8 @@
     },
     "STATIC_ZONES": [
         "example.com."
+    ],
+    "IGNORED_ZONES": [
+        "awsprod.test.com."
     ]
 }

@@ -64,7 +64,7 @@ payload = """{
         "SCALR_EVENT_ISDBMASTER": "",
         "SCALR_INSTANCE_ID": "i-072ccf26",
         "SCALR_EVENT_INSTANCE_ID": "i-072ccf26",
-        "DNS_DOMAIN": "google.com",
+        "DNS_DOMAIN": "awsprod.test.com",
         "SCALR_PROJECT_NAME": "azer",
         "CRQ_NUMBER": "1022",
         "SUPPORT_TEAM": "aa",
