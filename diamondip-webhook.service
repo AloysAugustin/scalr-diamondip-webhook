@@ -1,0 +1,11 @@
+[Unit]
+Description=DiamondIP Webhook container
+After=docker.service
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/docker start -a bmo-hostname-webhook
+ExecStop=/usr/bin/docker stop -t 2 bmo-hostname-webhook
+
+[Install]
+WantedBy=local.target
