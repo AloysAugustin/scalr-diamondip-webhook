@@ -2,6 +2,7 @@
 
 mkdir -p ./logs/supervisor/
 mkdir -p ./logs/nginx/
+mkdir -p ./logs/uwsgi/
 
 docker stop webhook-diamondip
 docker rm webhook-diamondip
