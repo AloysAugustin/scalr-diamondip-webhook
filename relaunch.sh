@@ -1,5 +1,8 @@
 #!/bin/bash
 
+mkdir -p ./logs/supervisor/
+mkdir -p ./logs/nginx/
+
 docker stop webhook-diamondip
 docker rm webhook-diamondip
 
