@@ -147,20 +147,34 @@ def get_authority(domainName):
     # select first response in SOA query
     return soa.rrset.items[0].mname.to_text()[:-1]
 
-def pushChanges(domainName, task_client):
+def pushChanges(domainName, task_client, already_updated_servers):
     if not domainName:
         return
-    server = get_authority(domainName)
+
+    try:
+        server = get_authority(domainName)
+    except:
+        logging.exception('Error finding authority DNS server')
+        return
+
     if domainName in STATIC_ZONES or domainName + '.' in STATIC_ZONES:
         # Static zone
         # Using changed zones temporarily since our user doesn't have access to dnsConfigurationSelectedZones
+        if server in already_updated_servers:
+            logging.info('Server {} has already been updated, skipping')
+            return
         logging.info('Updating static zone: %s, server: %s', domainName, server)
         task_client.service.dnsConfigurationChangedZones(name=server, ip='', abortfailedcheck=True, checkzones=True)
+        already_updated_servers.append(server)
     else:
         # Dynamic zone
+        if server in already_updated_servers:
+            logging.info('Server {} has already been updated, skipping')
+            return
         logging.info('Updating dynamic zone: %s, server: %s', domainName, server)
         task_client.service.dnsDDNSChangedRRs(name=server)
-    
+        already_updated_servers.append(server)
+
 
 def addDev(data):
     client = Client(import_url(),
@@ -222,8 +236,9 @@ def addDev(data):
                              location=tasks_location(),
                              timeout=10,
                              proxy=PROXY)
+        updated_servers = []
         for domain in changed_domains:
-            pushChanges(domain, task_client)
+            pushChanges(domain, task_client, updated_servers)
     return 'Ok'
 
 def delDev(data):
@@ -243,7 +258,7 @@ def delDev(data):
                              location=tasks_location(),
                              timeout=10,
                              proxy=PROXY)
-        pushChanges(getDomainName(data), task_client)
+        pushChanges(getDomainName(data), task_client, [])
     return 'Deletion ok'
 
 
