@@ -110,7 +110,7 @@ def process_aliases(device, data, imports, is_linux):
         # Returns a list of domain nams that were impacted, to be updated
     names = data.get('LB_ALIAS_NAME')
     if not names:
-        return set()
+        return set(), []
     changedDomainNames = []
     records_to_import = []
 
@@ -138,7 +138,6 @@ def process_aliases(device, data, imports, is_linux):
             cname_record.data = device.hostname + '.' + device.domainName
             records_to_import.append(cname_record)
         changedDomainNames.append(domain_name)
-
 
     return set(changedDomainNames), records_to_import
 
@@ -210,11 +209,12 @@ def addDev(data):
     logging.info('Adding: OS ' + data['OS_ID'] + ', ' + device.hostname + ' ' + device.ipAddress)
     logging.info('Domain name: %s', device.domainName)
     logging.info('User defined fields: {}'.format(device.userDefinedFields))
+    logging.info("Zones to update: {}, {} records to add manually".format(changed_domains, len(records_to_import)))
+
     client.service.importDevice(device)
     for record in records_to_import:
         client.service.importDeviceResourceRecord(record)
 
-    logging.info("Zones to update: {}".format(changed_domains))
     task_client = Client(tasks_url(),
                          username=IPCONTROL_LOGIN,
                          password=IPCONTROL_PASSWORD,

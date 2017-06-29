@@ -71,7 +71,7 @@ payload = """{
         "ACCOUNT_NAME": "blah",
         "DATACENTER": "a",
         "OS_ID": "l",
-        "ADDITIONAL_NAMES": "app.google.fr"
+        "LB_ALIAS_NAME": "app.google.fr"
     },
     "timestamp": "Thu 20 Mar 2014 14:28:05 UTC"
 }"""
