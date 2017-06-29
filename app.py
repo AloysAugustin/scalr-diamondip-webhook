@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+
+# Disable HTTPS verification
+import ssl
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    print('AttrError')
+    # Legacy Python that doesn't verify HTTPS certificates by default
+    pass
+else:
+    print('Disabling https verification')
+    # Handle target environment that doesn't support HTTPS verification
+    ssl._create_default_https_context = _create_unverified_https_context
+
 from flask import Flask
 from flask import request
 from flask import abort
@@ -62,14 +77,17 @@ def webhook_listener():
 def getHostname(data):
     return data['SCALR_EVENT_SERVER_HOSTNAME']
 
+
 def get_ip(data):
     if data['SCALR_EVENT_INTERNAL_IP']:
         return data['SCALR_EVENT_INTERNAL_IP']
     else:
         return data['SCALR_EVENT_EXTERNAL_IP']
 
+
 def getDomainName(data):
     return data['DNS_DOMAIN']
+
 
 def is_valid_hostname(hostname):
     if len(hostname) > 255:
@@ -79,12 +97,22 @@ def is_valid_hostname(hostname):
     allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(x) for x in hostname.split("."))
 
-def add_additional_names(device, data, imports):
-    # Returns a list of domain nams that were impacted, to be updated
+
+def add_linux_aliases(device, data, imports):
+    return process_aliases(device, data, imports, True)
+
+
+def add_windows_aliases(device, data, imports):
+    return process_aliases(device, data, imports, False)
+
+
+def process_aliases(device, data, imports, is_linux):
+        # Returns a list of domain nams that were impacted, to be updated
     names = data.get('LB_ALIAS_NAME')
     if not names:
         return set()
     changedDomainNames = []
+    records_to_import = []
 
     for name in names.split():
         if not name:
@@ -93,14 +121,26 @@ def add_additional_names(device, data, imports):
             logging.error('Invalid hostname found: %s, not registered', name)
             continue
         logging.info("Adding alias: %s", name)
-        device.aliases.append(name)
         components = name.split('.')
         hostname = components[0]
         domain_name = '.'.join(components[1:])
         if domain_name[-1] != '.':
             domain_name = domain_name + '.'
+        if is_linux:
+            device.aliases.append(name)
+        else:
+            cname_record = imports.factory.create('ns2:WSDeviceResourceRec')
+            cname_record.comment = 'Created automatically by Scalr DiamondIP integration'
+            cname_record.domain = domain_name
+            cname_record.ipAddress = device.ipAddress
+            cname_record.owner = hostname
+            cname_record.resourceRecordType = 'CNAME'
+            cname_record.data = device.hostname + '.' + device.domainName
+            records_to_import.append(cname_record)
         changedDomainNames.append(domain_name)
-    return set(changedDomainNames)
+
+
+    return set(changedDomainNames), records_to_import
 
 def get_authority(domainName):
     # pushing DNS config
@@ -130,19 +170,28 @@ def addDev(data):
                     location=import_location(),
                     timeout=10,
                     proxy=PROXY)
+
     device = client.factory.create('ns2:WSDevice')
     device.addressType = 'Static'
     device.deviceType = 'Static Server'
-    # Create resource records
-    device.resourceRecordFlag = True
-    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
-        device.hostname = getHostname(data)
-        device.domainName = getDomainName(data)
-    else:
-        # Don't register windows in DNS
-        device.hostname = ''
-        device.domainName = ''
     device.ipAddress = get_ip(data)
+
+    # Hostname, domain name & aliases
+    device.hostname = getHostname(data)
+    device.domainName = getDomainName(data)
+    if device.domainName and device.domainName[-1] != '.':
+            device.domainName = device.domainName + '.'
+    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
+        # Create resource records, add aliases directly
+        device.resourceRecordFlag = True
+        device.aliases = []
+        changed_domains, records_to_import = add_linux_aliases(device, data, client)
+        changed_domains.add(device.domainName)
+    else:
+        # Don't create resource records for the machine, create them manually for the aliases
+        device.resourceRecordFlag = False
+        changed_domains, records_to_import = add_windows_aliases(device, data, client)
+
     udf = {
         'location': 'DATACENTER',
         'OSOrgUnit': 'ACCOUNT_NAME',
@@ -154,20 +203,17 @@ def addDev(data):
     for name, gv in udf.items():
         if not gv in data:
             raise Exception('Global Variable {} not found, cannot set user defined field in IPAM'.format(gv))
-        device.userDefinedFields.append(name + '=' + data[gv])
-
-        device.aliases = []
-    changed_domains = add_additional_names(device, data, client)
+        val = data[gv]
+        device.userDefinedFields.append(name + '=' + val)
 
     logging.debug(json.dumps(data, indent=2))
     logging.info('Adding: OS ' + data['OS_ID'] + ', ' + device.hostname + ' ' + device.ipAddress)
     logging.info('Domain name: %s', device.domainName)
     logging.info('User defined fields: {}'.format(device.userDefinedFields))
     client.service.importDevice(device)
-    if 'OS_ID' in data and data['OS_ID'].lower() == 'l':
-        if device.domainName and device.domainName[-1] != '.':
-            device.domainName = device.domainName + '.'
-        changed_domains.add(device.domainName)
+    for record in records_to_import:
+        client.service.importDeviceResourceRecord(record)
+
     logging.info("Zones to update: {}".format(changed_domains))
     task_client = Client(tasks_url(),
                          username=IPCONTROL_LOGIN,
