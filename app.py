@@ -215,14 +215,15 @@ def addDev(data):
     for record in records_to_import:
         client.service.importDeviceResourceRecord(record)
 
-    task_client = Client(tasks_url(),
-                         username=IPCONTROL_LOGIN,
-                         password=IPCONTROL_PASSWORD,
-                         location=tasks_location(),
-                         timeout=10,
-                         proxy=PROXY)
-    for domain in changed_domains:
-        pushChanges(domain, task_client)
+    if len(changed_domains) > 0
+        task_client = Client(tasks_url(),
+                             username=IPCONTROL_LOGIN,
+                             password=IPCONTROL_PASSWORD,
+                             location=tasks_location(),
+                             timeout=10,
+                             proxy=PROXY)
+        for domain in changed_domains:
+            pushChanges(domain, task_client)
     return 'Ok'
 
 def delDev(data):
