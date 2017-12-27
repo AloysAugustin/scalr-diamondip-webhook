@@ -259,6 +259,7 @@ def delDev(data):
                              timeout=10,
                              proxy=PROXY)
         pushChanges(getDomainName(data), task_client, [])
+    # Update aliases zones?
     return 'Deletion ok'
 
 
